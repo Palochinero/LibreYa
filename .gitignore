@@ -1,0 +1,16 @@
+# Carpetas a ignorar
+node_modules/
+.expo/
+build/
+dist/
+
+# Archivos del sistema
+.DS_Store
+Thumbs.db
+
+# Archivos de logs y temporales
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.env
+*.log

@@ -4,7 +4,11 @@
     "expo-status-bar": "^2.2.3",
     "firebase-tools": "^14.11.1",
     "undefined": "\\",
-    "expo-dev-client": "~5.2.4"
+    "expo-dev-client": "~5.2.4",
+    "react-native-reanimated": "~3.17.4",
+    "react-native-gesture-handler": "~2.24.0",
+    "react-native-screens": "~4.11.1",
+    "expo-constants": "~17.1.7"
   },
   "devDependencies": {
     "typescript": "^5.8.3"

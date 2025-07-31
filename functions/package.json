@@ -20,6 +20,7 @@
     "ngeohash": "^0.6.3"
   },
   "devDependencies": {
+    "@types/ngeohash": "^0.6.8",
     "firebase-functions-test": "^3.1.0",
     "typescript": "^5.0.0"
   },

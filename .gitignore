@@ -15,3 +15,6 @@ yarn-error.log*
 .env
 *.log
 "package-lock.json"    # (una vez)
+/ANDROID
+/IOS
+

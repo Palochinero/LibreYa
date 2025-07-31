@@ -1,15 +1,16 @@
-// App.js  (raíz)
 import React from 'react';
 import { StatusBar } from 'expo-status-bar';
-
-// ⬇️  ruta relativa correcta:
-import AppNavigator from './plazalibre-app/src/navigation/AppNavigator';
+import AppNavigator from './src/navigation/AppNavigator';
+import { AuthProvider } from './src/context/AuthContext';
+import { ThemeProvider } from './src/context/ThemeContext';
 
 export default function App() {
   return (
-    <>
-      <AppNavigator />
-      <StatusBar style="auto" />
-    </>
+    <AuthProvider>
+      <ThemeProvider>
+        <AppNavigator />
+        <StatusBar style="auto" />
+      </ThemeProvider>
+    </AuthProvider>
   );
 }

@@ -1,86 +1,91 @@
 "use strict";
-// index.ts - VERSIÓN FINAL Y LIMPIA (SIN DUPLICADOS)
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.createChatOnReservation = exports.leaveReview = exports.cancelReservation = exports.deleteParkingSpace = exports.findAndAssignParkingSpace = exports.publishParkingSpace = void 0;
+exports.findAndAssignParkingSpace = exports.publishParkingSpace = void 0;
+// functions/index.ts  ✅ limpio
 const functions = require("firebase-functions");
 const admin = require("firebase-admin");
-const geohash = require("geohash");
-// --- INICIALIZACIÓN ---
-if (admin.apps.length === 0) {
-    admin.initializeApp();
-}
+const geohash = require("ngeohash"); // ← IMPORT CORRECTO
+admin.initializeApp();
 const db = admin.firestore();
-// --- FUNCIONES DE AYUDA ---
-function calculateDistance(lat1, lon1, lat2, lon2) {
-    const R = 6371;
-    const dLat = (lat2 - lat1) * Math.PI / 180;
-    const dLon = (lon2 - lon1) * Math.PI / 180;
-    const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    return R * c;
-}
-// --- FUNCIONES INVOCABLES ---
-exports.publishParkingSpace = functions.https.onCall(async (data, context) => {
-    if (!context.auth) {
-        throw new functions.https.HttpsError("unauthenticated", "Debes iniciar sesión.");
+const region = functions.region('us-central1'); // misma región que usas en el front
+/* ───────── utilidades ───────── */
+const toRad = (deg) => (deg * Math.PI) / 180;
+const haversine = (lat1, lon1, lat2, lon2) => {
+    const R = 6371; // km
+    const dLat = toRad(lat2 - lat1);
+    const dLon = toRad(lon2 - lon1);
+    const a = Math.sin(dLat / 2) ** 2 +
+        Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+    return R * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
+};
+const ts = (iso) => iso ? admin.firestore.Timestamp.fromDate(new Date(iso)) : null;
+/* ───────── publishParkingSpace (CALLABLE) ───────── */
+exports.publishParkingSpace = region.https.onCall(async (data, context) => {
+    try {
+        /* ── validaciones básicas ── */
+        if (!context.auth) {
+            throw new functions.https.HttpsError('unauthenticated', 'Debes iniciar sesión');
+        }
+        const { latitude, longitude, description, scheduledAt = null, address = null, } = data || {};
+        if (typeof latitude !== 'number' ||
+            typeof longitude !== 'number' ||
+            !description) {
+            throw new functions.https.HttpsError('invalid-argument', 'Datos inválidos');
+        }
+        /* ── calcula geohash y guarda ── */
+        const hash = geohash.encode(latitude, longitude);
+        const doc = await db.collection('parkingSpaces').add({
+            latitude,
+            longitude,
+            geohash: hash,
+            providerId: context.auth.uid,
+            description,
+            scheduledAt: ts(scheduledAt),
+            status: 'pendiente',
+            address,
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+        return { parkingSpaceId: doc.id }; // ⇢ llega al front
     }
-    const userId = context.auth.uid;
-    const { latitude, longitude, description, scheduledAt, address } = data;
-    if (!latitude || !longitude) {
-        throw new functions.https.HttpsError("invalid-argument", "Falta la ubicación (latitud/longitud).");
+    catch (err) {
+        console.error('publishParkingSpace:', err);
+        throw err instanceof functions.https.HttpsError
+            ? err
+            : new functions.https.HttpsError('internal', err.message || 'Error interno');
     }
-    const activeSpotsQuery = db.collection("parkingSpaces")
-        .where("providerId", "==", userId)
-        .where("status", "in", ["pendiente", "reservada"]);
-    const activeSpots = await activeSpotsQuery.get();
-    if (!activeSpots.empty) {
-        throw new functions.https.HttpsError("already-exists", "Ya tienes una plaza activa. Solo puedes publicar una a la vez.");
+});
+/* ───────── findAndAssignParkingSpace (CALLABLE) ───────── */
+exports.findAndAssignParkingSpace = region.https.onCall(async (data, _ctx) => {
+    try {
+        const { latitude, longitude } = data || {};
+        if (typeof latitude !== 'number' || typeof longitude !== 'number') {
+            throw new functions.https.HttpsError('invalid-argument', 'Coordenadas inválidas');
+        }
+        const snap = await db
+            .collection('parkingSpaces')
+            .where('status', '==', 'pendiente')
+            .get();
+        let bestId = null;
+        let bestDist = Infinity;
+        snap.forEach((doc) => {
+            const d = doc.data();
+            const dist = haversine(latitude, longitude, d.latitude, d.longitude);
+            if (dist < bestDist) {
+                bestDist = dist;
+                bestId = doc.id;
+            }
+        });
+        if (!bestId) {
+            throw new functions.https.HttpsError('not-found', 'No hay plazas disponibles');
+        }
+        await db.doc(`parkingSpaces/${bestId}`).update({ status: 'reservada' });
+        return { parkingSpaceId: bestId, distance: bestDist };
     }
-    const newParkingSpace = {
-        providerId: userId,
-        status: "pendiente",
-        createdAt: admin.firestore.FieldValue.serverTimestamp(),
-        scheduledAt: scheduledAt ? admin.firestore.Timestamp.fromDate(new Date(scheduledAt)) : null,
-        location: new admin.firestore.GeoPoint(latitude, longitude),
-        geohash: geohash.encode(latitude, longitude, 5),
-        description: description || "Plaza disponible",
-        address: address || null,
-        takerId: null,
-        chatId: null,
-    };
-    const docRef = await db.collection("parkingSpaces").add(newParkingSpace);
-    return { message: "Plaza publicada con éxito", id: docRef.id };
-});
-exports.findAndAssignParkingSpace = functions.https.onCall(async (data, context) => {
-    // ... (El código de esta función ya estaba bien, lo dejamos)
-    // ...
-});
-exports.deleteParkingSpace = functions.https.onCall(async (data, context) => {
-    // ... (El código de esta función ya estaba bien, lo dejamos)
-    // ...
-});
-exports.cancelReservation = functions.https.onCall(async (data, context) => {
-    // ... (El código de esta función ya estaba bien, lo dejamos)
-    // ...
-});
-exports.leaveReview = functions.https.onCall(async (data, context) => {
-    // ... (El código de esta función ya estaba bien, lo dejamos)
-    // ...
-});
-// --- FUNCIONES DE TRIGGER ---
-exports.createChatOnReservation = functions.firestore
-    .document("parkingSpaces/{parkingSpaceId}")
-    .onUpdate(async (change, context) => {
-    const before = change.before.data();
-    const after = change.after.data();
-    if (before.status === "pendiente" && after.status === "reservada") {
-        const { providerId, takerId } = after;
-        if (!providerId || !takerId)
-            return null;
-        const providerRef = db.collection("users").doc(providerId);
-        await providerRef.update({ parkCoins: admin.firestore.FieldValue.increment(1) });
-        // ... (El resto de la lógica de crear el chat) ...
+    catch (err) {
+        console.error('findAndAssignParkingSpace:', err);
+        throw err instanceof functions.https.HttpsError
+            ? err
+            : new functions.https.HttpsError('internal', err.message || 'Error interno');
     }
-    return null;
 });
 //# sourceMappingURL=index.js.map

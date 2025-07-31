@@ -1,88 +1,82 @@
-// functions/index.ts – Versión depurada ✅ para SDK v2
-// Incluye:
-//   • importación correcta de `ngeohash` (funciona encode/decode)
-//   • función HTTP publishParkingSpace
-//   • helpers para validación mínima y escritura en Firestore
-//   • ejemplo de findAndAssignParkingSpace (distancia + reserva)
-// Ajusta IDs de colección o lógica según tu modelo.
-
+// functions/index.ts  ✅ limpio
 import * as functions from 'firebase-functions';
 import * as admin from 'firebase-admin';
-import geohash from 'ngeohash'; // 👈  ESTA ES LA IMPORTACIÓN CORRECTA
-a
+import * as geohash from 'ngeohash';              // ← IMPORT CORRECTO
+
 admin.initializeApp();
 const db = admin.firestore();
+const region = functions.region('us-central1');   // misma región que usas en el front
 
-/*──────────────────── utilities ────────────────────*/
-const toRad = (value: number) => (value * Math.PI) / 180;
-function haversine(lat1: number, lon1: number, lat2: number, lon2: number) {
+/* ───────── utilidades ───────── */
+const toRad = (deg: number) => (deg * Math.PI) / 180;
+const haversine = (lat1: number, lon1: number, lat2: number, lon2: number) => {
   const R = 6371; // km
   const dLat = toRad(lat2 - lat1);
   const dLon = toRad(lon2 - lon1);
   const a =
-    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.cos(toRad(lat1)) *
-      Math.cos(toRad(lat2)) *
-      Math.sin(dLon / 2) *
-      Math.sin(dLon / 2);
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  return R * c;
-}
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+  return R * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
+};
+const ts = (iso?: string) =>
+  iso ? admin.firestore.Timestamp.fromDate(new Date(iso)) : null;
 
-/*──────────────────── publishParkingSpace ────────────────────*/
-export const publishParkingSpace = functions.https.onRequest(async (req, res) => {
+/* ───────── publishParkingSpace (CALLABLE) ───────── */
+export const publishParkingSpace = region.https.onCall(async (data, context) => {
   try {
-    if (req.method !== 'POST') return res.status(405).send('Method Not Allowed');
-
+    /* ── validaciones básicas ── */
+    if (!context.auth) {
+      throw new functions.https.HttpsError('unauthenticated', 'Debes iniciar sesión');
+    }
     const {
       latitude,
       longitude,
-      providerId,
       description,
       scheduledAt = null,
-      status = 'pendiente',
       address = null,
-    } = req.body;
+    } = data || {};
 
     if (
-      latitude === undefined ||
-      longitude === undefined ||
-      providerId === undefined ||
-      description === undefined
+      typeof latitude !== 'number' ||
+      typeof longitude !== 'number' ||
+      !description
     ) {
-      return res.status(400).send('Missing required fields');
+      throw new functions.https.HttpsError('invalid-argument', 'Datos inválidos');
     }
 
+    /* ── calcula geohash y guarda ── */
     const hash = geohash.encode(latitude, longitude);
 
-    const docRef = await db.collection('parkingSpaces').add({
+    const doc = await db.collection('parkingSpaces').add({
       latitude,
       longitude,
       geohash: hash,
-      providerId,
+      providerId: context.auth.uid,
       description,
-      scheduledAt: scheduledAt ? admin.firestore.Timestamp.fromDate(new Date(scheduledAt)) : null,
-      status,
+      scheduledAt: ts(scheduledAt),
+      status: 'pendiente',
       address,
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
     });
 
-    return res.send({ parkingSpaceId: docRef.id });
-  } catch (e) {
-    console.error(e);
-    return res.status(500).send('internal');
+    return { parkingSpaceId: doc.id };            // ⇢ llega al front
+  } catch (err: any) {
+    console.error('publishParkingSpace:', err);
+    throw err instanceof functions.https.HttpsError
+      ? err
+      : new functions.https.HttpsError('internal', err.message || 'Error interno');
   }
 });
 
-/*──────────────────── findAndAssignParkingSpace ────────────────────*/
-export const findAndAssignParkingSpace = functions.https.onRequest(async (req, res) => {
+/* ───────── findAndAssignParkingSpace (CALLABLE) ───────── */
+export const findAndAssignParkingSpace = region.https.onCall(async (data, _ctx) => {
   try {
-    if (req.method !== 'POST') return res.status(405).send('Method Not Allowed');
-    const { latitude, longitude } = req.body;
-    if (latitude === undefined || longitude === undefined) return res.status(400).send('Missing coords');
+    const { latitude, longitude } = data || {};
+    if (typeof latitude !== 'number' || typeof longitude !== 'number') {
+      throw new functions.https.HttpsError('invalid-argument', 'Coordenadas inválidas');
+    }
 
-    // Busca las plazas pendientes.
-    const snapshot = await db
+    const snap = await db
       .collection('parkingSpaces')
       .where('status', '==', 'pendiente')
       .get();
@@ -90,7 +84,7 @@ export const findAndAssignParkingSpace = functions.https.onRequest(async (req, r
     let bestId: string | null = null;
     let bestDist = Infinity;
 
-    snapshot.forEach((doc) => {
+    snap.forEach((doc) => {
       const d = doc.data() as any;
       const dist = haversine(latitude, longitude, d.latitude, d.longitude);
       if (dist < bestDist) {
@@ -99,13 +93,16 @@ export const findAndAssignParkingSpace = functions.https.onRequest(async (req, r
       }
     });
 
-    if (!bestId) return res.status(404).send('No parking available');
+    if (!bestId) {
+      throw new functions.https.HttpsError('not-found', 'No hay plazas disponibles');
+    }
 
-    // Marca como reservada
-    await db.collection('parkingSpaces').doc(bestId).update({ status: 'reservada' });
-    return res.send({ parkingSpaceId: bestId, distance: bestDist });
-  } catch (e) {
-    console.error(e);
-    return res.status(500).send('internal');
+    await db.doc(`parkingSpaces/${bestId}`).update({ status: 'reservada' });
+    return { parkingSpaceId: bestId, distance: bestDist };
+  } catch (err: any) {
+    console.error('findAndAssignParkingSpace:', err);
+    throw err instanceof functions.https.HttpsError
+      ? err
+      : new functions.https.HttpsError('internal', err.message || 'Error interno');
   }
 });

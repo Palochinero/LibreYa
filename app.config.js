@@ -2,15 +2,14 @@ export default {
   expo: {
     name: "PlazaLibre",
     slug: "plazalibre",
-    sdkVersion: "53.0.0",
 
     android: {
       newArchEnabled: false,
-      package: "com.palochinero.plazalibre"   // ←  ID ÚNICO
+      package: "com.palochinero.plazalibre"
     },
     ios: {
       newArchEnabled: false,
-      bundleIdentifier: "com.palochinero.plazalibre" // (opcional para ahora)
+      bundleIdentifier: "com.palochinero.plazalibre"
     },
 
     extra: {

@@ -205,3 +205,17 @@ export const completeParkingSpace = region.https.onCall(async (data, context) =>
     throw new functions.https.HttpsError('internal', 'Error al completar la reserva');
   }
 });
+
+// ─────────── NUEVAS FUNCIONES AGREGADAS ───────────
+
+// Auto-expirar plazas programadas (tarea programada)
+export { autoExpireParkingSpace } from './autoExpireParkingSpace';
+
+// Penalizar usuarios abusivos (tarea programada diaria)
+export { penalizeAbusers } from './penalizeAbusers';
+
+// Reportar usuarios problemáticos
+export { reportUser } from './reportUser';
+
+// Generar índices geográficos automáticamente (trigger)
+export { geoIndexParkingSpace } from './geoIndexParkingSpace';

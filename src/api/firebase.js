@@ -50,6 +50,9 @@ export const api = {
   findAndAssignParkingSpace: (data) => callFunction('findAndAssignParkingSpace')(data),
   deleteParkingSpace  : (data) => callFunction('deleteParkingSpace')(data),
   cancelParkingSpace  : (data) => callFunction('cancelParkingSpace')(data),
+  
+  // ─────────── NUEVAS FUNCIONES AGREGADAS ───────────
+  reportUser: (data) => callFunction('reportUser')(data),
 };
 
 // -----------------------------------------------------------------------------

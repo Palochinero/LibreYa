@@ -35,6 +35,61 @@ export const publishParkingSpace = region.https.onCall(async (data, context) => 
   }
 
   try {
+    /* ───── 1) Verificar límites de publicación ───── */
+    const userRef = db.doc(`users/${uid}`);
+    const userSnap = await userRef.get();
+    
+    if (!userSnap.exists) {
+      throw new functions.https.HttpsError('not-found', 'Usuario no encontrado');
+    }
+
+    const userData = userSnap.data();
+    const userPlan = userData.plan || 'free';
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    // Contar publicaciones de hoy
+    const todayPublicationsQuery = await db.collection('parkingSpaces')
+      .where('providerId', '==', uid)
+      .where('createdAt', '>=', admin.firestore.Timestamp.fromDate(today))
+      .get();
+
+    const todayPublications = todayPublicationsQuery.size;
+    
+    // Verificar límites según el plan
+    let canPublish = false;
+    let dailyLimit = 1;
+
+    switch (userPlan) {
+      case 'free':
+        dailyLimit = 1;
+        canPublish = todayPublications < dailyLimit;
+        break;
+        
+      case 'premium':
+        canPublish = true; // Sin límites
+        break;
+        
+      case 'ad_supported':
+        const adsWatched = userData.adsWatchedToday || 0;
+        dailyLimit = 1 + (adsWatched * 2);
+        canPublish = todayPublications < dailyLimit;
+        break;
+        
+      default:
+        dailyLimit = 1;
+        canPublish = todayPublications < dailyLimit;
+    }
+
+    if (!canPublish) {
+      throw new functions.https.HttpsError('resource-exhausted', 
+        `Has alcanzado el límite diario de ${dailyLimit} publicación(es). ` +
+        (userPlan === 'free' ? 'Actualiza a Premium por €5/mes para publicar sin límites.' : 
+         'Ve más anuncios o actualiza a Premium para publicar más.')
+      );
+    }
+
+    /* ───── 2) Crear la plaza ───── */
     const parkingSpaceData = {
       providerId: uid,
       address,
@@ -56,9 +111,14 @@ export const publishParkingSpace = region.https.onCall(async (data, context) => 
       success: true, 
       spaceId: docRef.id,
       message: 'Plaza publicada correctamente',
-      isScheduled: Boolean(isScheduled)
+      isScheduled: Boolean(isScheduled),
+      todayPublications: todayPublications + 1,
+      dailyLimit
     };
   } catch (error) {
+    if (error instanceof functions.https.HttpsError) {
+      throw error;
+    }
     throw new functions.https.HttpsError('internal', 'Error al publicar la plaza');
   }
 });
@@ -229,3 +289,11 @@ export { trackParkingSpace } from './trackParkingSpace';
 
 // Obtener información de seguimiento
 export { getTrackingInfo } from './getTrackingInfo';
+
+// ─────────── FUNCIONES DE REPORTES Y LÍMITES ───────────
+
+// Cancelar plaza con penalización
+export { cancelWithPenalty } from './cancelWithPenalty';
+
+// Verificar límites de publicación
+export { checkPublishLimits } from './checkPublishLimits';

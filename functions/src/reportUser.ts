@@ -1,109 +1,148 @@
 // functions/src/reportUser.ts – Función para reportar usuarios
 
 import * as functions from 'firebase-functions';
+import { Expo, ExpoPushMessage } from 'expo-server-sdk';
 import { admin, db } from './utils/firebaseAdmin';
 
 const fn = functions.region('us-central1');
+const expo = new Expo();
 
 interface ReportPayload {
-  reportedUserId: string;
-  reason: string;
-  details?: string;
-  evidence?: string; // URL de imagen o evidencia
+  reportedUserId?: string; // Opcional para reportes anónimos
+  reason: 'no_show' | 'fake_plaza' | 'scammer' | 'inappropriate' | 'other';
+  details: string;
+  spaceId?: string; // Opcional para reportes relacionados con plazas
+  isAnonymous?: boolean; // Para reportes anónimos
+  location?: {
+    latitude: number;
+    longitude: number;
+    address: string;
+  };
 }
 
 /**
- * Permite a un usuario reportar a otro por comportamiento inapropiado.
- * 1. Valida que el usuario reportado existe.
- * 2. Guarda el reporte en la colección 'reports'.
- * 3. Opcionalmente envía notificación a administradores.
- * 4. Previene reportes duplicados del mismo usuario.
+ * Permite a los usuarios reportar a otros usuarios por diferentes motivos.
+ * 1. Reportes normales: entre usuarios conocidos
+ * 2. Reportes anónimos: para reportar gorristas/scammers
+ * 3. Sistema de recompensas: 2 PARKCOINS por reporte válido
+ * 4. Alertas automáticas: cuando hay 10 reportes en una zona
  */
 export const reportUser = fn.https.onCall(async (data: ReportPayload, context) => {
   /* ───── 1) Autenticación ───── */
-  const reporterId = context.auth?.uid;
-  if (!reporterId) throw new functions.https.HttpsError('unauthenticated', 'Debes iniciar sesión');
-
-  const { reportedUserId, reason, details, evidence } = data;
+  const uid = context.auth?.uid;
+  if (!uid) throw new functions.https.HttpsError('unauthenticated', 'Debes iniciar sesión');
   
-  if (!reportedUserId || !reason) {
-    throw new functions.https.HttpsError('invalid-argument', 'Faltan datos requeridos: reportedUserId y reason');
+  const { reportedUserId, reason, details, spaceId, isAnonymous = false, location } = data;
+  
+  if (!reason || !details) {
+    throw new functions.https.HttpsError('invalid-argument', 'Faltan datos requeridos');
   }
 
-  if (reporterId === reportedUserId) {
-    throw new functions.https.HttpsError('invalid-argument', 'No puedes reportarte a ti mismo');
+  // Para reportes normales, se requiere reportedUserId
+  if (!isAnonymous && !reportedUserId) {
+    throw new functions.https.HttpsError('invalid-argument', 'Falta "reportedUserId" para reportes normales');
+  }
+
+  // Para reportes anónimos, se requiere ubicación
+  if (isAnonymous && !location) {
+    throw new functions.https.HttpsError('invalid-argument', 'Falta ubicación para reportes anónimos');
   }
 
   try {
-    /* ───── 2) Verificar que el usuario reportado existe ───── */
-    const reportedUserRef = db.doc(`users/${reportedUserId}`);
-    const reportedUserSnap = await reportedUserRef.get();
+    /* ───── 2) Verificar límites de reportes ───── */
+    const userRef = db.doc(`users/${uid}`);
+    const userSnap = await userRef.get();
     
-    if (!reportedUserSnap.exists) {
-      throw new functions.https.HttpsError('not-found', 'El usuario reportado no existe');
+    if (!userSnap.exists) {
+      throw new functions.https.HttpsError('not-found', 'Usuario no encontrado');
     }
 
-    /* ───── 3) Verificar que no hay reporte duplicado reciente ───── */
-    const oneDayAgo = admin.firestore.Timestamp.fromDate(
-      new Date(Date.now() - 24 * 60 * 60 * 1000)
-    );
-
-    const existingReportQuery = db
-      .collection('reports')
-      .where('reporterId', '==', reporterId)
-      .where('reportedUserId', '==', reportedUserId)
-      .where('createdAt', '>=', oneDayAgo);
-
-    const existingReports = await existingReportQuery.get();
+    const userData = userSnap.data();
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
     
-    if (!existingReports.empty) {
-      throw new functions.https.HttpsError('already-exists', 'Ya has reportado a este usuario en las últimas 24 horas');
+    // Verificar límite de reportes diarios (máximo 3 por día)
+    const todayReports = userData.dailyReports || 0;
+    if (todayReports >= 3) {
+      throw new functions.https.HttpsError('resource-exhausted', 'Has alcanzado el límite de reportes diarios');
     }
 
-    /* ───── 4) Crear el reporte ───── */
-    const reportData = {
-      reporterId,
-      reportedUserId,
+    /* ───── 3) Crear el reporte ───── */
+    const reportData: any = {
+      reporterId: uid,
       reason,
-      details: details || '',
-      evidence: evidence || '',
-      status: 'pendiente', // pendiente, investigado, resuelto, rechazado
+      details,
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
-      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-      adminNotes: '',
-      resolvedAt: null,
-      resolvedBy: null
+      isAnonymous,
+      status: 'pending', // pending, reviewed, resolved, dismissed
     };
 
+    if (reportedUserId) {
+      reportData.reportedUserId = reportedUserId;
+    }
+
+    if (spaceId) {
+      reportData.spaceId = spaceId;
+    }
+
+    if (location) {
+      reportData.location = location;
+      // Generar geohash para búsquedas por zona
+      const geohash = require('ngeohash');
+      reportData.geoHash = geohash.encode(location.latitude, location.longitude, 6);
+    }
+
     const reportRef = await db.collection('reports').add(reportData);
-    
-    /* ───── 5) Actualizar contador de reportes del usuario ───── */
-    await reportedUserRef.update({
-      reportCount: admin.firestore.FieldValue.increment(1),
-      lastReportedAt: admin.firestore.FieldValue.serverTimestamp()
+
+    /* ───── 4) Actualizar contadores del usuario ───── */
+    await userRef.update({
+      dailyReports: admin.firestore.FieldValue.increment(1),
+      totalReports: admin.firestore.FieldValue.increment(1),
     });
 
-    /* ───── 6) Notificar a administradores (simulado) ───── */
-    try {
-      // Aquí podrías enviar email a admins o notificación push
-      functions.logger.info(`Nuevo reporte creado: ${reportRef.id}`, {
-        reporterId,
-        reportedUserId,
-        reason
+    /* ───── 5) Si es reporte normal, actualizar contador del reportado ───── */
+    if (reportedUserId && !isAnonymous) {
+      const reportedUserRef = db.doc(`users/${reportedUserId}`);
+      await reportedUserRef.update({
+        reportCount: admin.firestore.FieldValue.increment(1),
       });
+    }
+
+    /* ───── 6) Verificar si hay suficientes reportes en la zona (para anónimos) ───── */
+    if (isAnonymous && location) {
+      const geohash = require('ngeohash');
+      const zoneHash = geohash.encode(location.latitude, location.longitude, 6);
       
-      // Simular envío de email a administradores
-      await sendAdminNotification(reportRef.id, reportedUserId, reason);
-      
-    } catch (error) {
-      functions.logger.error('Error notificando a administradores:', error);
-      // No fallar la función si la notificación falla
+      const zoneReportsQuery = await db.collection('reports')
+        .where('geoHash', '==', zoneHash)
+        .where('isAnonymous', '==', true)
+        .where('reason', 'in', ['scammer', 'fake_plaza'])
+        .get();
+
+      if (zoneReportsQuery.size >= 10) {
+        // Enviar alerta al administrador
+        await sendAdminAlert({
+          type: 'zone_scammer_alert',
+          location,
+          reportCount: zoneReportsQuery.size,
+          zoneHash,
+        });
+      }
+    }
+
+    /* ───── 7) Recompensa por reporte válido ───── */
+    if (!isAnonymous && reason === 'no_show') {
+      // Dar 2 PARKCOINS al reporter por reporte de no-show
+      await addPointsToUser(uid, 2, 'Reporte de no-show válido', null);
     }
 
     return {
       success: true,
       reportId: reportRef.id,
-      message: 'Reporte enviado correctamente. Los administradores lo revisarán.'
+      message: isAnonymous ? 
+        'Reporte anónimo enviado. Gracias por ayudar a mantener la comunidad segura.' :
+        'Reporte enviado correctamente. Será revisado por nuestro equipo.',
+      parkcoinsEarned: (!isAnonymous && reason === 'no_show') ? 2 : 0
     };
 
   } catch (error) {
@@ -116,27 +155,40 @@ export const reportUser = fn.https.onCall(async (data: ReportPayload, context) =
 });
 
 /**
- * Función auxiliar para enviar notificación a administradores
+ * Función auxiliar para enviar alertas al administrador
  */
-async function sendAdminNotification(reportId: string, reportedUserId: string, reason: string): Promise<void> {
-  // Simulación de envío de email/notificación a admins
-  // En producción, aquí usarías SendGrid, Mailgun, o similar
+async function sendAdminAlert(alertData: any) {
+  try {
+    // Crear documento de alerta
+    await db.collection('adminAlerts').add({
+      ...alertData,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      status: 'new',
+    });
+
+    // Aquí se podría enviar notificación push al admin
+    // Por ahora solo se guarda en la base de datos
+    functions.logger.info('Alerta de administrador creada:', alertData);
+  } catch (error) {
+    functions.logger.error('Error enviando alerta al admin:', error);
+  }
+}
+
+/**
+ * Función auxiliar para agregar puntos a un usuario
+ */
+async function addPointsToUser(userId: string, points: number, reason: string, transaction: any) {
+  const userRef = db.doc(`users/${userId}`);
   
-  const adminNotification = {
-    type: 'user_report',
-    reportId,
-    reportedUserId,
-    reason,
-    timestamp: new Date().toISOString(),
-    priority: 'medium'
-  };
-
-  // Guardar en colección de notificaciones para admins
-  await db.collection('adminNotifications').add({
-    ...adminNotification,
-    createdAt: admin.firestore.FieldValue.serverTimestamp(),
-    read: false
-  });
-
-  functions.logger.info('Notificación de reporte enviada a administradores', adminNotification);
+  if (transaction) {
+    transaction.update(userRef, {
+      parkcoins: admin.firestore.FieldValue.increment(points),
+      lastPointsUpdate: admin.firestore.FieldValue.serverTimestamp(),
+    });
+  } else {
+    await userRef.update({
+      parkcoins: admin.firestore.FieldValue.increment(points),
+      lastPointsUpdate: admin.firestore.FieldValue.serverTimestamp(),
+    });
+  }
 } 

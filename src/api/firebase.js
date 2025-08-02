@@ -57,6 +57,10 @@ export const api = {
   // ─────────── FUNCIONES DE SEGUIMIENTO EN TIEMPO REAL ───────────
   trackParkingSpace: (data) => callFunction('trackParkingSpace')(data),
   getTrackingInfo: (data) => callFunction('getTrackingInfo')(data),
+  
+  // ─────────── FUNCIONES DE REPORTES Y LÍMITES ───────────
+  cancelWithPenalty: (data) => callFunction('cancelWithPenalty')(data),
+  checkPublishLimits: (data) => callFunction('checkPublishLimits')(data),
 };
 
 // -----------------------------------------------------------------------------

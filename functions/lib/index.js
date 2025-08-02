@@ -34,7 +34,7 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getTrackingInfo = exports.trackParkingSpace = exports.geoIndexParkingSpace = exports.reportUser = exports.penalizeAbusers = exports.autoExpireParkingSpace = exports.completeParkingSpace = exports.deleteParkingSpace = exports.cancelParkingSpace = exports.findAndAssignParkingSpace = exports.publishParkingSpace = void 0;
+exports.checkPublishLimits = exports.cancelWithPenalty = exports.getTrackingInfo = exports.trackParkingSpace = exports.geoIndexParkingSpace = exports.reportUser = exports.penalizeAbusers = exports.autoExpireParkingSpace = exports.completeParkingSpace = exports.deleteParkingSpace = exports.cancelParkingSpace = exports.findAndAssignParkingSpace = exports.publishParkingSpace = void 0;
 const functions = __importStar(require("firebase-functions"));
 const geohash = __importStar(require("ngeohash")); // ← IMPORT CORRECTO
 const firebaseAdmin_1 = require("./utils/firebaseAdmin"); // ← usa la instancia única
@@ -63,6 +63,48 @@ exports.publishParkingSpace = region.https.onCall(async (data, context) => {
         throw new functions.https.HttpsError('invalid-argument', 'Faltan datos requeridos');
     }
     try {
+        /* ───── 1) Verificar límites de publicación ───── */
+        const userRef = firebaseAdmin_1.db.doc(`users/${uid}`);
+        const userSnap = await userRef.get();
+        if (!userSnap.exists) {
+            throw new functions.https.HttpsError('not-found', 'Usuario no encontrado');
+        }
+        const userData = userSnap.data();
+        const userPlan = userData.plan || 'free';
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        // Contar publicaciones de hoy
+        const todayPublicationsQuery = await firebaseAdmin_1.db.collection('parkingSpaces')
+            .where('providerId', '==', uid)
+            .where('createdAt', '>=', firebaseAdmin_1.admin.firestore.Timestamp.fromDate(today))
+            .get();
+        const todayPublications = todayPublicationsQuery.size;
+        // Verificar límites según el plan
+        let canPublish = false;
+        let dailyLimit = 1;
+        switch (userPlan) {
+            case 'free':
+                dailyLimit = 1;
+                canPublish = todayPublications < dailyLimit;
+                break;
+            case 'premium':
+                canPublish = true; // Sin límites
+                break;
+            case 'ad_supported':
+                const adsWatched = userData.adsWatchedToday || 0;
+                dailyLimit = 1 + (adsWatched * 2);
+                canPublish = todayPublications < dailyLimit;
+                break;
+            default:
+                dailyLimit = 1;
+                canPublish = todayPublications < dailyLimit;
+        }
+        if (!canPublish) {
+            throw new functions.https.HttpsError('resource-exhausted', `Has alcanzado el límite diario de ${dailyLimit} publicación(es). ` +
+                (userPlan === 'free' ? 'Actualiza a Premium por €5/mes para publicar sin límites.' :
+                    'Ve más anuncios o actualiza a Premium para publicar más.'));
+        }
+        /* ───── 2) Crear la plaza ───── */
         const parkingSpaceData = {
             providerId: uid,
             address,
@@ -82,10 +124,15 @@ exports.publishParkingSpace = region.https.onCall(async (data, context) => {
             success: true,
             spaceId: docRef.id,
             message: 'Plaza publicada correctamente',
-            isScheduled: Boolean(isScheduled)
+            isScheduled: Boolean(isScheduled),
+            todayPublications: todayPublications + 1,
+            dailyLimit
         };
     }
     catch (error) {
+        if (error instanceof functions.https.HttpsError) {
+            throw error;
+        }
         throw new functions.https.HttpsError('internal', 'Error al publicar la plaza');
     }
 });
@@ -228,4 +275,11 @@ Object.defineProperty(exports, "trackParkingSpace", { enumerable: true, get: fun
 // Obtener información de seguimiento
 var getTrackingInfo_1 = require("./getTrackingInfo");
 Object.defineProperty(exports, "getTrackingInfo", { enumerable: true, get: function () { return getTrackingInfo_1.getTrackingInfo; } });
+// ─────────── FUNCIONES DE REPORTES Y LÍMITES ───────────
+// Cancelar plaza con penalización
+var cancelWithPenalty_1 = require("./cancelWithPenalty");
+Object.defineProperty(exports, "cancelWithPenalty", { enumerable: true, get: function () { return cancelWithPenalty_1.cancelWithPenalty; } });
+// Verificar límites de publicación
+var checkPublishLimits_1 = require("./checkPublishLimits");
+Object.defineProperty(exports, "checkPublishLimits", { enumerable: true, get: function () { return checkPublishLimits_1.checkPublishLimits; } });
 //# sourceMappingURL=index.js.map

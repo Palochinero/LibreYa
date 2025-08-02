@@ -14,6 +14,7 @@ import ChatScreen from '../screens/ChatScreen';
 import FaqScreen from '../screens/FaqScreen';
 import ReservationDetailScreen from '../screens/ReservationDetailScreen';
 import TrackingScreen from '../screens/TrackingScreen';
+import AnonymousReportScreen from '../screens/AnonymousReportScreen';
 
 // Context
 import { useAuth } from '../context/AuthContext';
@@ -138,6 +139,11 @@ const AppNavigator = () => {
           name="Tracking" 
           component={TrackingScreen}
           options={{ title: 'Seguimiento en Tiempo Real' }}
+        />
+        <Stack.Screen 
+          name="AnonymousReport" 
+          component={AnonymousReportScreen}
+          options={{ title: 'Reportar Incidente' }}
         />
       </Stack.Navigator>
     </NavigationContainer>

@@ -10,4 +10,6 @@ export { reportUser } from './reportUser';
 export { geoIndexParkingSpace } from './geoIndexParkingSpace';
 export { trackParkingSpace } from './trackParkingSpace';
 export { getTrackingInfo } from './getTrackingInfo';
+export { cancelWithPenalty } from './cancelWithPenalty';
+export { checkPublishLimits } from './checkPublishLimits';
 //# sourceMappingURL=index.d.ts.map

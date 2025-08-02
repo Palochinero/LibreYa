@@ -61,6 +61,9 @@ export const api = {
   // ─────────── FUNCIONES DE REPORTES Y LÍMITES ───────────
   cancelWithPenalty: (data) => callFunction('cancelWithPenalty')(data),
   checkPublishLimits: (data) => callFunction('checkPublishLimits')(data),
+  
+  // ─────────── FUNCIONES DE DISPONIBILIDAD ───────────
+  checkParkingAvailability: (data) => callFunction('checkParkingAvailability')(data),
 };
 
 // -----------------------------------------------------------------------------

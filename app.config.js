@@ -45,6 +45,12 @@ export default {
           icon: "./src/assets/notification-icon.png",
           color: "#ffffff"
         }
+      ],
+      [
+        "@react-native-google-signin/google-signin",
+        {
+          iosUrlScheme: "com.googleusercontent.apps.13007497972-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+        }
       ]
     ],
 

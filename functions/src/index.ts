@@ -297,3 +297,8 @@ export { cancelWithPenalty } from './cancelWithPenalty';
 
 // Verificar límites de publicación
 export { checkPublishLimits } from './checkPublishLimits';
+
+// ─────────── FUNCIONES DE DISPONIBILIDAD ───────────
+
+// Verificar disponibilidad de plazas en una zona
+export { checkParkingAvailability } from './checkParkingAvailability';

@@ -12,4 +12,5 @@ export { trackParkingSpace } from './trackParkingSpace';
 export { getTrackingInfo } from './getTrackingInfo';
 export { cancelWithPenalty } from './cancelWithPenalty';
 export { checkPublishLimits } from './checkPublishLimits';
+export { checkParkingAvailability } from './checkParkingAvailability';
 //# sourceMappingURL=index.d.ts.map

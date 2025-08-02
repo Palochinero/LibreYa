@@ -34,7 +34,7 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.checkPublishLimits = exports.cancelWithPenalty = exports.getTrackingInfo = exports.trackParkingSpace = exports.geoIndexParkingSpace = exports.reportUser = exports.penalizeAbusers = exports.autoExpireParkingSpace = exports.completeParkingSpace = exports.deleteParkingSpace = exports.cancelParkingSpace = exports.findAndAssignParkingSpace = exports.publishParkingSpace = void 0;
+exports.checkParkingAvailability = exports.checkPublishLimits = exports.cancelWithPenalty = exports.getTrackingInfo = exports.trackParkingSpace = exports.geoIndexParkingSpace = exports.reportUser = exports.penalizeAbusers = exports.autoExpireParkingSpace = exports.completeParkingSpace = exports.deleteParkingSpace = exports.cancelParkingSpace = exports.findAndAssignParkingSpace = exports.publishParkingSpace = void 0;
 const functions = __importStar(require("firebase-functions"));
 const geohash = __importStar(require("ngeohash")); // ← IMPORT CORRECTO
 const firebaseAdmin_1 = require("./utils/firebaseAdmin"); // ← usa la instancia única
@@ -282,4 +282,8 @@ Object.defineProperty(exports, "cancelWithPenalty", { enumerable: true, get: fun
 // Verificar límites de publicación
 var checkPublishLimits_1 = require("./checkPublishLimits");
 Object.defineProperty(exports, "checkPublishLimits", { enumerable: true, get: function () { return checkPublishLimits_1.checkPublishLimits; } });
+// ─────────── FUNCIONES DE DISPONIBILIDAD ───────────
+// Verificar disponibilidad de plazas en una zona
+var checkParkingAvailability_1 = require("./checkParkingAvailability");
+Object.defineProperty(exports, "checkParkingAvailability", { enumerable: true, get: function () { return checkParkingAvailability_1.checkParkingAvailability; } });
 //# sourceMappingURL=index.js.map

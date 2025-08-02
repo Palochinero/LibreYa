@@ -1,4 +1,5 @@
 "use strict";
+// functions/src/cancelParkingSpace.ts – versión corregida y lista para desplegar
 var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
     if (k2 === undefined) k2 = k;
     var desc = Object.getOwnPropertyDescriptor(m, k);
@@ -35,57 +36,74 @@ var __importStar = (this && this.__importStar) || (function () {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.cancelParkingSpace = void 0;
 const functions = __importStar(require("firebase-functions"));
-const admin = __importStar(require("firebase-admin"));
+const firebaseAdmin_1 = require("./utils/firebaseAdmin"); // instancia única
 const expo_server_sdk_1 = require("expo-server-sdk");
-admin.initializeApp();
-const db = admin.firestore();
+const fn = functions.region('us-central1'); // misma región que el resto
 const expo = new expo_server_sdk_1.Expo();
-// Helper para enviar push
-async function sendPush(to, title, body) {
-    if (!expo_server_sdk_1.Expo.isExpoPushToken(to))
-        return;
-    await expo.sendPushNotificationsAsync([{ to, title, body }]);
-}
-const fn = functions.region('us-central1');
+/**
+ * El proveedor anula una reserva ya aceptada.
+ * 1. Verifica auth y que el proveedor sea el dueño.
+ * 2. Cambia status -> "cancelada" y elimina takerId.
+ * 3. Resta 1 PARKCOIN al proveedor y suma contador de cancelaciones.
+ * 4. Envía push al buscador y al proveedor.
+ */
 exports.cancelParkingSpace = fn.https.onCall(async (data, context) => {
-    /* 1. Autenticación */
+    /* ───── 1) Autenticación ───── */
     const uid = context.auth?.uid;
     if (!uid)
-        throw new functions.https.HttpsError('unauthenticated', 'Necesitas iniciar sesión');
-    /* 2. Validación del payload */
-    const spaceId = data.spaceId;
+        throw new functions.https.HttpsError('unauthenticated', 'Debes iniciar sesión');
+    const { spaceId } = data;
     if (!spaceId)
-        throw new functions.https.HttpsError('invalid-argument', 'Falta spaceId');
-    /* 3. Transacción */
-    await db.runTransaction(async (tx) => {
-        const spaceRef = db.doc(`parkingSpaces/${spaceId}`);
-        const snap = await tx.get(spaceRef);
+        throw new functions.https.HttpsError('invalid-argument', 'Falta "spaceId"');
+    /* ───── 2) Transacción ───── */
+    await firebaseAdmin_1.db.runTransaction(async (tx) => {
+        const ref = firebaseAdmin_1.db.doc(`parkingSpaces/${spaceId}`);
+        const snap = await tx.get(ref);
         if (!snap.exists)
-            throw new functions.https.HttpsError('not-found', 'Plaza no encontrada');
+            throw new functions.https.HttpsError('not-found', 'La plaza no existe');
         const space = snap.data();
-        // Debe ser el proveedor y la plaza debe estar reservada
-        if (space.providerId !== uid || space.status !== 'reservada') {
-            throw new functions.https.HttpsError('failed-precondition', 'No puedes anular esta plaza');
+        if (space.providerId !== uid) {
+            throw new functions.https.HttpsError('permission-denied', 'No eres el propietario');
         }
-        /* 3a. Cambiar estado y liberar takerId */
-        tx.update(spaceRef, {
+        if (space.status !== 'reservada') {
+            throw new functions.https.HttpsError('failed-precondition', 'Solo puedes anular reservas activas');
+        }
+        /* 2a. Actualiza la plaza */
+        tx.update(ref, {
             status: 'cancelada',
-            takerId: admin.firestore.FieldValue.delete(),
+            takerId: firebaseAdmin_1.admin.firestore.FieldValue.delete(),
         });
-        /* 3b. Quitar 1 PARKCOIN */
-        const userRef = db.doc(`users/${uid}`);
+        /* 2b. Ajusta PARKCOINS y contador */
+        const userRef = firebaseAdmin_1.db.doc(`users/${uid}`);
         tx.update(userRef, {
-            parkcoins: admin.firestore.FieldValue.increment(-1),
-            cancellations: admin.firestore.FieldValue.increment(1),
+            parkcoins: firebaseAdmin_1.admin.firestore.FieldValue.increment(-1),
+            cancellations: firebaseAdmin_1.admin.firestore.FieldValue.increment(1),
         });
-        /* 3c. Notificaciones push */
-        const tasks = [];
-        if (space.takerPushToken)
-            tasks.push(sendPush(space.takerPushToken, 'Reserva cancelada', 'El conductor ha anulado la plaza que ibas a ocupar.'));
-        if (space.providerPushToken)
-            tasks.push(sendPush(space.providerPushToken, 'Has perdido 1 PARKCOIN', 'Si sigues cancelando podrías ser penalizado.'));
-        await Promise.all(tasks);
     });
+    /* ───── 3) Notificaciones push (fuera de la tx) ───── */
+    try {
+        const spaceSnap = await firebaseAdmin_1.db.doc(`parkingSpaces/${spaceId}`).get();
+        const space = spaceSnap.data();
+        const messages = [];
+        if (space.takerPushToken && expo_server_sdk_1.Expo.isExpoPushToken(space.takerPushToken)) {
+            messages.push({
+                to: space.takerPushToken,
+                title: 'Reserva cancelada',
+                body: 'El conductor anuló la plaza que ibas a ocupar.',
+            });
+        }
+        if (space.providerPushToken && expo_server_sdk_1.Expo.isExpoPushToken(space.providerPushToken)) {
+            messages.push({
+                to: space.providerPushToken,
+                title: 'Has perdido 1 PARKCOIN',
+                body: 'Si sigues cancelando, podrías ser penalizado.',
+            });
+        }
+        for (const chunk of expo.chunkPushNotifications(messages)) {
+            await expo.sendPushNotificationsAsync(chunk);
+        }
+    }
+    catch (_) { /* ignoramos errores de push */ }
     return { ok: true };
 });
 //# sourceMappingURL=cancelParkingSpace.js.map

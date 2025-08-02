@@ -34,8 +34,10 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.deleteParkingSpace = exports.cancelParkingSpace = exports.findAndAssignParkingSpace = exports.publishParkingSpace = void 0;
+exports.geoIndexParkingSpace = exports.reportUser = exports.penalizeAbusers = exports.autoExpireParkingSpace = exports.completeParkingSpace = exports.deleteParkingSpace = exports.cancelParkingSpace = exports.findAndAssignParkingSpace = exports.publishParkingSpace = void 0;
 const functions = __importStar(require("firebase-functions"));
+const geohash = __importStar(require("ngeohash")); // ← IMPORT CORRECTO
+const firebaseAdmin_1 = require("./utils/firebaseAdmin"); // ← usa la instancia única
 const region = functions.region('us-central1'); // misma región que en el front
 /* ─────────── utilidades ─────────── */
 const toRad = (deg) => (deg * Math.PI) / 180;
@@ -50,13 +52,116 @@ const haversine = (Lat1, Lon1, Lat2, Lon2) => {
 };
 const iso = (d) => new Date(d).toISOString().slice(0, 19);
 /* ─────────── FUNCTIONS EXPORTABLES ─────────── */
-// Ejemplo: publishParkingSpace (tal como ya lo tenías)
+// Publicar una nueva plaza de estacionamiento
 exports.publishParkingSpace = region.https.onCall(async (data, context) => {
-    // ... tu lógica actual ...
+    const uid = context.auth?.uid;
+    if (!uid)
+        throw new functions.https.HttpsError('unauthenticated', 'Debes iniciar sesión');
+    const { address, latitude, longitude, price, startTime, endTime, description } = data;
+    if (!address || !latitude || !longitude || !price || !startTime) {
+        throw new functions.https.HttpsError('invalid-argument', 'Faltan datos requeridos');
+    }
+    try {
+        const parkingSpaceData = {
+            providerId: uid,
+            address,
+            latitude,
+            longitude,
+            price: parseFloat(price),
+            startTime: firebaseAdmin_1.admin.firestore.Timestamp.fromDate(new Date(startTime)),
+            endTime: endTime ? firebaseAdmin_1.admin.firestore.Timestamp.fromDate(new Date(endTime)) : null,
+            description: description || '',
+            status: 'pendiente',
+            createdAt: firebaseAdmin_1.admin.firestore.FieldValue.serverTimestamp(),
+            geohash: geohash.encode(latitude, longitude, 9),
+        };
+        const docRef = await firebaseAdmin_1.db.collection('parkingSpaces').add(parkingSpaceData);
+        return {
+            success: true,
+            spaceId: docRef.id,
+            message: 'Plaza publicada correctamente'
+        };
+    }
+    catch (error) {
+        throw new functions.https.HttpsError('internal', 'Error al publicar la plaza');
+    }
 });
-// Ejemplo: findAndAssignParkingSpace
+// Buscar y asignar una plaza de estacionamiento
 exports.findAndAssignParkingSpace = region.https.onCall(async (data, context) => {
-    // ... tu lógica actual ...
+    const uid = context.auth?.uid;
+    if (!uid)
+        throw new functions.https.HttpsError('unauthenticated', 'Debes iniciar sesión');
+    const { latitude, longitude, maxDistance = 5 } = data; // maxDistance en km
+    if (!latitude || !longitude) {
+        throw new functions.https.HttpsError('invalid-argument', 'Se requieren coordenadas');
+    }
+    try {
+        // Buscar plazas disponibles cerca de la ubicación
+        const geohashPrefix = geohash.encode(latitude, longitude, 6);
+        const parkingSpacesRef = firebaseAdmin_1.db.collection('parkingSpaces');
+        const query = parkingSpacesRef
+            .where('status', '==', 'pendiente')
+            .where('geohash', '>=', geohashPrefix)
+            .where('geohash', '<=', geohashPrefix + '\uf8ff')
+            .limit(10);
+        const snapshot = await query.get();
+        const availableSpaces = [];
+        snapshot.forEach(doc => {
+            const space = doc.data();
+            const distance = haversine(latitude, longitude, space.latitude, space.longitude);
+            if (distance <= maxDistance) {
+                availableSpaces.push({
+                    id: doc.id,
+                    ...space,
+                    distance
+                });
+            }
+        });
+        // Ordenar por distancia
+        availableSpaces.sort((a, b) => a.distance - b.distance);
+        if (availableSpaces.length === 0) {
+            return {
+                success: false,
+                message: 'No se encontraron plazas disponibles en tu área'
+            };
+        }
+        // Intentar reservar la plaza más cercana
+        const bestSpace = availableSpaces[0];
+        const spaceRef = firebaseAdmin_1.db.doc(`parkingSpaces/${bestSpace.id}`);
+        const result = await firebaseAdmin_1.db.runTransaction(async (tx) => {
+            const spaceDoc = await tx.get(spaceRef);
+            if (!spaceDoc.exists) {
+                throw new functions.https.HttpsError('not-found', 'La plaza ya no está disponible');
+            }
+            const spaceData = spaceDoc.data();
+            if (!spaceData || spaceData.status !== 'pendiente') {
+                throw new functions.https.HttpsError('failed-precondition', 'La plaza ya fue reservada');
+            }
+            // Reservar la plaza
+            tx.update(spaceRef, {
+                status: 'reservada',
+                takerId: uid,
+                reservedAt: firebaseAdmin_1.admin.firestore.FieldValue.serverTimestamp(),
+            });
+            return {
+                success: true,
+                spaceId: bestSpace.id,
+                space: {
+                    ...bestSpace,
+                    status: 'reservada',
+                    takerId: uid
+                },
+                message: 'Plaza reservada correctamente'
+            };
+        });
+        return result;
+    }
+    catch (error) {
+        if (error instanceof functions.https.HttpsError) {
+            throw error;
+        }
+        throw new functions.https.HttpsError('internal', 'Error al buscar plazas');
+    }
 });
 // Nueva: cancelParkingSpace  (importada desde su módulo)
 var cancelParkingSpace_1 = require("./cancelParkingSpace");
@@ -64,4 +169,59 @@ Object.defineProperty(exports, "cancelParkingSpace", { enumerable: true, get: fu
 // Nueva: deleteParkingSpace  (importada desde su módulo)
 var deleteParkingSpace_1 = require("./deleteParkingSpace");
 Object.defineProperty(exports, "deleteParkingSpace", { enumerable: true, get: function () { return deleteParkingSpace_1.deleteParkingSpace; } });
+// Completar una reserva de plaza
+exports.completeParkingSpace = region.https.onCall(async (data, context) => {
+    const uid = context.auth?.uid;
+    if (!uid)
+        throw new functions.https.HttpsError('unauthenticated', 'Debes iniciar sesión');
+    const { spaceId } = data;
+    if (!spaceId)
+        throw new functions.https.HttpsError('invalid-argument', 'Falta "spaceId"');
+    try {
+        await firebaseAdmin_1.db.runTransaction(async (tx) => {
+            const spaceRef = firebaseAdmin_1.db.doc(`parkingSpaces/${spaceId}`);
+            const spaceSnap = await tx.get(spaceRef);
+            if (!spaceSnap.exists) {
+                throw new functions.https.HttpsError('not-found', 'La plaza no existe');
+            }
+            const space = spaceSnap.data();
+            if (!space || space.takerId !== uid) {
+                throw new functions.https.HttpsError('permission-denied', 'No eres el conductor de esta reserva');
+            }
+            if (!space || space.status !== 'reservada') {
+                throw new functions.https.HttpsError('failed-precondition', 'Solo puedes completar reservas activas');
+            }
+            // Marcar como completada
+            tx.update(spaceRef, {
+                status: 'completada',
+                completedAt: firebaseAdmin_1.admin.firestore.FieldValue.serverTimestamp(),
+            });
+            // Dar PARKCOINS al proveedor
+            const providerRef = firebaseAdmin_1.db.doc(`users/${space.providerId}`);
+            tx.update(providerRef, {
+                parkcoins: firebaseAdmin_1.admin.firestore.FieldValue.increment(1),
+            });
+        });
+        return { success: true, message: 'Reserva completada correctamente' };
+    }
+    catch (error) {
+        if (error instanceof functions.https.HttpsError) {
+            throw error;
+        }
+        throw new functions.https.HttpsError('internal', 'Error al completar la reserva');
+    }
+});
+// ─────────── NUEVAS FUNCIONES AGREGADAS ───────────
+// Auto-expirar plazas programadas (tarea programada)
+var autoExpireParkingSpace_1 = require("./autoExpireParkingSpace");
+Object.defineProperty(exports, "autoExpireParkingSpace", { enumerable: true, get: function () { return autoExpireParkingSpace_1.autoExpireParkingSpace; } });
+// Penalizar usuarios abusivos (tarea programada diaria)
+var penalizeAbusers_1 = require("./penalizeAbusers");
+Object.defineProperty(exports, "penalizeAbusers", { enumerable: true, get: function () { return penalizeAbusers_1.penalizeAbusers; } });
+// Reportar usuarios problemáticos
+var reportUser_1 = require("./reportUser");
+Object.defineProperty(exports, "reportUser", { enumerable: true, get: function () { return reportUser_1.reportUser; } });
+// Generar índices geográficos automáticamente (trigger)
+var geoIndexParkingSpace_1 = require("./geoIndexParkingSpace");
+Object.defineProperty(exports, "geoIndexParkingSpace", { enumerable: true, get: function () { return geoIndexParkingSpace_1.geoIndexParkingSpace; } });
 //# sourceMappingURL=index.js.map

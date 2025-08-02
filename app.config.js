@@ -5,12 +5,48 @@ export default {
 
     android: {
       newArchEnabled: false,
-      package: "com.palochinero.plazalibre"
+      package: "com.palochinero.plazalibre",
+      permissions: [
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION",
+        "CAMERA",
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE",
+        "RECORD_AUDIO"
+      ]
     },
     ios: {
       newArchEnabled: false,
-      bundleIdentifier: "com.palochinero.plazalibre"
+      bundleIdentifier: "com.palochinero.plazalibre",
+      infoPlist: {
+        NSCameraUsageDescription: "Esta app necesita acceso a la cámara para tomar fotos de verificación de plazas de aparcamiento.",
+        NSLocationWhenInUseUsageDescription: "Esta app necesita acceso a tu ubicación para mostrar plazas de aparcamiento cercanas.",
+        NSLocationAlwaysAndWhenInUseUsageDescription: "Esta app necesita acceso a tu ubicación para mostrar plazas de aparcamiento cercanas.",
+        NSPhotoLibraryUsageDescription: "Esta app necesita acceso a tu galería para seleccionar fotos de verificación."
+      }
     },
+
+    plugins: [
+      [
+        "expo-camera",
+        {
+          cameraPermission: "Permitir a PlazaLibre acceder a tu cámara para tomar fotos de verificación."
+        }
+      ],
+      [
+        "expo-location",
+        {
+          locationAlwaysAndWhenInUsePermission: "Permitir a PlazaLibre acceder a tu ubicación para mostrar plazas cercanas."
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          icon: "./src/assets/notification-icon.png",
+          color: "#ffffff"
+        }
+      ]
+    ],
 
     extra: {
       eas: {

@@ -2,7 +2,7 @@
 
 import * as functions from 'firebase-functions';
 import { admin, db } from './utils/firebaseAdmin';      // instancia única
-import { Expo } from 'expo-server-sdk';
+import { Expo, ExpoPushMessage } from 'expo-server-sdk';
 
 const fn   = functions.region('us-central1');           // misma región que el resto
 const expo = new Expo();
@@ -55,7 +55,7 @@ export const cancelParkingSpace = fn.https.onCall(async (data: Payload, context)
   try {
     const spaceSnap = await db.doc(`parkingSpaces/${spaceId}`).get();
     const space = spaceSnap.data() as any;
-    const messages: Expo.PushMessage[] = [];
+    const messages: ExpoPushMessage[] = [];
 
     if (space.takerPushToken && Expo.isExpoPushToken(space.takerPushToken)) {
       messages.push({

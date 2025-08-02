@@ -1,7 +1,7 @@
 // functions/src/completeParkingSpace.ts – Función para completar reserva de plaza
 
 import * as functions from 'firebase-functions';
-import { Expo } from 'expo-server-sdk';
+import { Expo, ExpoPushMessage } from 'expo-server-sdk';
 import { admin, db } from './utils/firebaseAdmin';
 import { addPointsToUser } from './utils/userUtils';
 
@@ -61,7 +61,7 @@ export const completeParkingSpace = fn.https.onCall(async (data: Payload, contex
 
   /* ───── 3) Notificaciones push (fuera de la tx) ───── */
   try {
-    const messages: Expo.PushMessage[] = [];
+    const messages: ExpoPushMessage[] = [];
 
     // Push al proveedor
     if (spaceData.providerPushToken && Expo.isExpoPushToken(spaceData.providerPushToken)) {

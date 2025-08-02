@@ -28,12 +28,12 @@ export const geoIndexParkingSpace = fn.firestore
     const oldData = change.before.exists ? change.before.data() : null;
 
     // Solo procesar si hay coordenadas válidas
-    if (!newData.latitude || !newData.longitude) {
+    if (!newData || !newData.latitude || !newData.longitude) {
       functions.logger.warn(`Documento ${spaceId} sin coordenadas válidas`);
       return null;
     }
 
-    const { latitude, longitude } = newData;
+    const { latitude, longitude } = newData as any;
     const newGeoHash = geohash.encode(latitude, longitude, 9); // Precisión 9
 
     // Verificar si el geoHash cambió

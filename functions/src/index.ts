@@ -84,7 +84,7 @@ export const findAndAssignParkingSpace = region.https.onCall(async (data, contex
       .limit(10);
 
     const snapshot = await query.get();
-    const availableSpaces = [];
+    const availableSpaces: any[] = [];
 
     snapshot.forEach(doc => {
       const space = doc.data();
@@ -121,7 +121,7 @@ export const findAndAssignParkingSpace = region.https.onCall(async (data, contex
       }
 
       const spaceData = spaceDoc.data();
-      if (spaceData.status !== 'pendiente') {
+      if (!spaceData || spaceData.status !== 'pendiente') {
         throw new functions.https.HttpsError('failed-precondition', 'La plaza ya fue reservada');
       }
 
@@ -177,10 +177,10 @@ export const completeParkingSpace = region.https.onCall(async (data, context) =>
       }
 
       const space = spaceSnap.data();
-      if (space.takerId !== uid) {
+      if (!space || space.takerId !== uid) {
         throw new functions.https.HttpsError('permission-denied', 'No eres el conductor de esta reserva');
       }
-      if (space.status !== 'reservada') {
+      if (!space || space.status !== 'reservada') {
         throw new functions.https.HttpsError('failed-precondition', 'Solo puedes completar reservas activas');
       }
 

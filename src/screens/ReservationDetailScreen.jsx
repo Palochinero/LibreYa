@@ -215,6 +215,22 @@ const ReservationDetailScreen = ({ route, navigation }) => {
           </Text>
         </TouchableOpacity>
         
+        {/* Botón de seguimiento en tiempo real (solo para plazas instantáneas) */}
+        {!reservation.isScheduled && reservation.status === 'reservada' && (
+          <TouchableOpacity 
+            style={[styles.actionButton, { borderColor: colors.secondary }]}
+            onPress={() => navigation.navigate('Tracking', { 
+              spaceId, 
+              spaceData: reservation 
+            })}
+          >
+            <Ionicons name="location-outline" size={24} color={colors.secondary} />
+            <Text style={[styles.actionText, { color: colors.secondary }]}>
+              Seguimiento en Tiempo Real
+            </Text>
+          </TouchableOpacity>
+        )}
+        
         {canCancel && (
           <TouchableOpacity 
             style={[styles.actionButton, styles.dangerButton, { borderColor: '#ff4444' }]}

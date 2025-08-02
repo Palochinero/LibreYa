@@ -49,8 +49,9 @@ const expo = new expo_server_sdk_1.Expo();
  * 4. Envía push al proveedor y al conductor.
  */
 exports.completeParkingSpace = fn.https.onCall(async (data, context) => {
+    var _a;
     /* ───── 1) Autenticación ───── */
-    const uid = context.auth?.uid;
+    const uid = (_a = context.auth) === null || _a === void 0 ? void 0 : _a.uid;
     if (!uid)
         throw new functions.https.HttpsError('unauthenticated', 'Debes iniciar sesión');
     const { spaceId } = data;

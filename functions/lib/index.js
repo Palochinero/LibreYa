@@ -34,7 +34,7 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.geoIndexParkingSpace = exports.reportUser = exports.penalizeAbusers = exports.autoExpireParkingSpace = exports.completeParkingSpace = exports.deleteParkingSpace = exports.cancelParkingSpace = exports.findAndAssignParkingSpace = exports.publishParkingSpace = void 0;
+exports.getTrackingInfo = exports.trackParkingSpace = exports.geoIndexParkingSpace = exports.reportUser = exports.penalizeAbusers = exports.autoExpireParkingSpace = exports.completeParkingSpace = exports.deleteParkingSpace = exports.cancelParkingSpace = exports.findAndAssignParkingSpace = exports.publishParkingSpace = void 0;
 const functions = __importStar(require("firebase-functions"));
 const geohash = __importStar(require("ngeohash")); // ← IMPORT CORRECTO
 const firebaseAdmin_1 = require("./utils/firebaseAdmin"); // ← usa la instancia única
@@ -54,10 +54,11 @@ const iso = (d) => new Date(d).toISOString().slice(0, 19);
 /* ─────────── FUNCTIONS EXPORTABLES ─────────── */
 // Publicar una nueva plaza de estacionamiento
 exports.publishParkingSpace = region.https.onCall(async (data, context) => {
-    const uid = context.auth?.uid;
+    var _a;
+    const uid = (_a = context.auth) === null || _a === void 0 ? void 0 : _a.uid;
     if (!uid)
         throw new functions.https.HttpsError('unauthenticated', 'Debes iniciar sesión');
-    const { address, latitude, longitude, price, startTime, endTime, description } = data;
+    const { address, latitude, longitude, price, startTime, endTime, description, isScheduled = false } = data;
     if (!address || !latitude || !longitude || !price || !startTime) {
         throw new functions.https.HttpsError('invalid-argument', 'Faltan datos requeridos');
     }
@@ -72,6 +73,7 @@ exports.publishParkingSpace = region.https.onCall(async (data, context) => {
             endTime: endTime ? firebaseAdmin_1.admin.firestore.Timestamp.fromDate(new Date(endTime)) : null,
             description: description || '',
             status: 'pendiente',
+            isScheduled: Boolean(isScheduled), // Campo para distinguir plazas instantáneas vs programadas
             createdAt: firebaseAdmin_1.admin.firestore.FieldValue.serverTimestamp(),
             geohash: geohash.encode(latitude, longitude, 9),
         };
@@ -79,7 +81,8 @@ exports.publishParkingSpace = region.https.onCall(async (data, context) => {
         return {
             success: true,
             spaceId: docRef.id,
-            message: 'Plaza publicada correctamente'
+            message: 'Plaza publicada correctamente',
+            isScheduled: Boolean(isScheduled)
         };
     }
     catch (error) {
@@ -88,7 +91,8 @@ exports.publishParkingSpace = region.https.onCall(async (data, context) => {
 });
 // Buscar y asignar una plaza de estacionamiento
 exports.findAndAssignParkingSpace = region.https.onCall(async (data, context) => {
-    const uid = context.auth?.uid;
+    var _a;
+    const uid = (_a = context.auth) === null || _a === void 0 ? void 0 : _a.uid;
     if (!uid)
         throw new functions.https.HttpsError('unauthenticated', 'Debes iniciar sesión');
     const { latitude, longitude, maxDistance = 5 } = data; // maxDistance en km
@@ -110,11 +114,7 @@ exports.findAndAssignParkingSpace = region.https.onCall(async (data, context) =>
             const space = doc.data();
             const distance = haversine(latitude, longitude, space.latitude, space.longitude);
             if (distance <= maxDistance) {
-                availableSpaces.push({
-                    id: doc.id,
-                    ...space,
-                    distance
-                });
+                availableSpaces.push(Object.assign(Object.assign({ id: doc.id }, space), { distance }));
             }
         });
         // Ordenar por distancia
@@ -146,11 +146,7 @@ exports.findAndAssignParkingSpace = region.https.onCall(async (data, context) =>
             return {
                 success: true,
                 spaceId: bestSpace.id,
-                space: {
-                    ...bestSpace,
-                    status: 'reservada',
-                    takerId: uid
-                },
+                space: Object.assign(Object.assign({}, bestSpace), { status: 'reservada', takerId: uid }),
                 message: 'Plaza reservada correctamente'
             };
         });
@@ -171,7 +167,8 @@ var deleteParkingSpace_1 = require("./deleteParkingSpace");
 Object.defineProperty(exports, "deleteParkingSpace", { enumerable: true, get: function () { return deleteParkingSpace_1.deleteParkingSpace; } });
 // Completar una reserva de plaza
 exports.completeParkingSpace = region.https.onCall(async (data, context) => {
-    const uid = context.auth?.uid;
+    var _a;
+    const uid = (_a = context.auth) === null || _a === void 0 ? void 0 : _a.uid;
     if (!uid)
         throw new functions.https.HttpsError('unauthenticated', 'Debes iniciar sesión');
     const { spaceId } = data;
@@ -224,4 +221,11 @@ Object.defineProperty(exports, "reportUser", { enumerable: true, get: function (
 // Generar índices geográficos automáticamente (trigger)
 var geoIndexParkingSpace_1 = require("./geoIndexParkingSpace");
 Object.defineProperty(exports, "geoIndexParkingSpace", { enumerable: true, get: function () { return geoIndexParkingSpace_1.geoIndexParkingSpace; } });
+// ─────────── FUNCIONES DE SEGUIMIENTO EN TIEMPO REAL ───────────
+// Actualizar ubicación del conductor en tiempo real
+var trackParkingSpace_1 = require("./trackParkingSpace");
+Object.defineProperty(exports, "trackParkingSpace", { enumerable: true, get: function () { return trackParkingSpace_1.trackParkingSpace; } });
+// Obtener información de seguimiento
+var getTrackingInfo_1 = require("./getTrackingInfo");
+Object.defineProperty(exports, "getTrackingInfo", { enumerable: true, get: function () { return getTrackingInfo_1.getTrackingInfo; } });
 //# sourceMappingURL=index.js.map

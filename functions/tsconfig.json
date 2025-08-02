@@ -1,19 +1,31 @@
 {
   "compilerOptions": {
-    "rootDir": "src",
-    "outDir": "lib",
-
-    "target": "es2020",
     "module": "commonjs",
-    "lib": ["es2020"],
-
-    "strict": true,
     "noImplicitReturns": true,
-    "noUnusedLocals": false,   // ← era true
+    "noUnusedLocals": false,
+    "outDir": "lib",
+    "sourceMap": true,
+    "strict": false,
+    "target": "es2017",
+    "skipLibCheck": true,
     "esModuleInterop": true,
-
-    "sourceMap": true
+    "allowSyntheticDefaultImports": true,
+    "resolveJsonModule": true,
+    "declaration": true,
+    "declarationMap": true,
+    "forceConsistentCasingInFileNames": true,
+    "noImplicitAny": false,
+    "noImplicitThis": false,
+    "noUnusedParameters": false,
+    "exactOptionalPropertyTypes": false,
+    "noImplicitOverride": false,
+    "noPropertyAccessFromIndexSignature": false,
+    "noUncheckedIndexedAccess": false,
+    "lib": ["es2017", "es2018", "es2019", "es2020"],
+    "types": ["node"]
   },
-  "include": ["src/**/*.ts"],
-  "compileOnSave": true
+  "compileOnSave": true,
+  "include": [
+    "src"
+  ]
 }

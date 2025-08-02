@@ -41,6 +41,7 @@ if (admin.apps.length === 0) {
 }
 const db = admin.firestore();
 async function addPointsToUser(userId, pointsToAdd, reason, transaction) {
+    var _a;
     const userRef = db.collection("users").doc(userId);
     const timestamp = admin.firestore.FieldValue.serverTimestamp();
     try {
@@ -64,7 +65,7 @@ async function addPointsToUser(userId, pointsToAdd, reason, transaction) {
             }
         }
         else {
-            const currentPoints = userDoc.data()?.points || 0;
+            const currentPoints = ((_a = userDoc.data()) === null || _a === void 0 ? void 0 : _a.points) || 0;
             const newPoints = currentPoints + pointsToAdd;
             const updateData = {
                 points: newPoints,

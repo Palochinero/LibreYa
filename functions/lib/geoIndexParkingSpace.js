@@ -65,7 +65,7 @@ exports.geoIndexParkingSpace = fn.firestore
     const { latitude, longitude } = newData;
     const newGeoHash = geohash.encode(latitude, longitude, 9); // Precisión 9
     // Verificar si el geoHash cambió
-    const oldGeoHash = oldData?.geoHash;
+    const oldGeoHash = oldData === null || oldData === void 0 ? void 0 : oldData.geoHash;
     if (oldGeoHash === newGeoHash) {
         functions.logger.info(`GeoHash no cambió para ${spaceId}: ${newGeoHash}`);
         return null;

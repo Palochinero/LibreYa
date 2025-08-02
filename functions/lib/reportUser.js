@@ -46,8 +46,9 @@ const fn = functions.region('us-central1');
  * 4. Previene reportes duplicados del mismo usuario.
  */
 exports.reportUser = fn.https.onCall(async (data, context) => {
+    var _a;
     /* ───── 1) Autenticación ───── */
-    const reporterId = context.auth?.uid;
+    const reporterId = (_a = context.auth) === null || _a === void 0 ? void 0 : _a.uid;
     if (!reporterId)
         throw new functions.https.HttpsError('unauthenticated', 'Debes iniciar sesión');
     const { reportedUserId, reason, details, evidence } = data;
@@ -139,11 +140,7 @@ async function sendAdminNotification(reportId, reportedUserId, reason) {
         priority: 'medium'
     };
     // Guardar en colección de notificaciones para admins
-    await firebaseAdmin_1.db.collection('adminNotifications').add({
-        ...adminNotification,
-        createdAt: firebaseAdmin_1.admin.firestore.FieldValue.serverTimestamp(),
-        read: false
-    });
+    await firebaseAdmin_1.db.collection('adminNotifications').add(Object.assign(Object.assign({}, adminNotification), { createdAt: firebaseAdmin_1.admin.firestore.FieldValue.serverTimestamp(), read: false }));
     functions.logger.info('Notificación de reporte enviada a administradores', adminNotification);
 }
 //# sourceMappingURL=reportUser.js.map

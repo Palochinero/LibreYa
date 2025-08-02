@@ -28,7 +28,7 @@ export const publishParkingSpace = region.https.onCall(async (data, context) => 
   const uid = context.auth?.uid;
   if (!uid) throw new functions.https.HttpsError('unauthenticated', 'Debes iniciar sesión');
 
-  const { address, latitude, longitude, price, startTime, endTime, description } = data;
+  const { address, latitude, longitude, price, startTime, endTime, description, isScheduled = false } = data;
   
   if (!address || !latitude || !longitude || !price || !startTime) {
     throw new functions.https.HttpsError('invalid-argument', 'Faltan datos requeridos');
@@ -45,6 +45,7 @@ export const publishParkingSpace = region.https.onCall(async (data, context) => 
       endTime: endTime ? admin.firestore.Timestamp.fromDate(new Date(endTime)) : null,
       description: description || '',
       status: 'pendiente',
+      isScheduled: Boolean(isScheduled), // Campo para distinguir plazas instantáneas vs programadas
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
       geohash: geohash.encode(latitude, longitude, 9),
     };
@@ -54,7 +55,8 @@ export const publishParkingSpace = region.https.onCall(async (data, context) => 
     return { 
       success: true, 
       spaceId: docRef.id,
-      message: 'Plaza publicada correctamente' 
+      message: 'Plaza publicada correctamente',
+      isScheduled: Boolean(isScheduled)
     };
   } catch (error) {
     throw new functions.https.HttpsError('internal', 'Error al publicar la plaza');
@@ -219,3 +221,11 @@ export { reportUser } from './reportUser';
 
 // Generar índices geográficos automáticamente (trigger)
 export { geoIndexParkingSpace } from './geoIndexParkingSpace';
+
+// ─────────── FUNCIONES DE SEGUIMIENTO EN TIEMPO REAL ───────────
+
+// Actualizar ubicación del conductor en tiempo real
+export { trackParkingSpace } from './trackParkingSpace';
+
+// Obtener información de seguimiento
+export { getTrackingInfo } from './getTrackingInfo';

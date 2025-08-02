@@ -44,8 +44,9 @@ const fn = functions.region('us-central1');
  *  - Solo se permite si el estado es "pendiente" y es su propio anuncio
  */
 exports.deleteParkingSpace = fn.https.onCall(async (data, context) => {
+    var _a;
     // 1) Autenticación
-    const uid = context.auth?.uid;
+    const uid = (_a = context.auth) === null || _a === void 0 ? void 0 : _a.uid;
     if (!uid) {
         throw new functions.https.HttpsError('unauthenticated', 'Debes iniciar sesión');
     }

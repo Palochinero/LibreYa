@@ -53,6 +53,10 @@ export const api = {
   
   // ─────────── NUEVAS FUNCIONES AGREGADAS ───────────
   reportUser: (data) => callFunction('reportUser')(data),
+  
+  // ─────────── FUNCIONES DE SEGUIMIENTO EN TIEMPO REAL ───────────
+  trackParkingSpace: (data) => callFunction('trackParkingSpace')(data),
+  getTrackingInfo: (data) => callFunction('getTrackingInfo')(data),
 };
 
 // -----------------------------------------------------------------------------

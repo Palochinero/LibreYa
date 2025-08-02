@@ -14,7 +14,7 @@ import { getStorage } from 'firebase/storage';
 // 2. CONFIGURACIÓN DE TU PROYECTO (TUS "LLAVES")
 // -----------------------------------------------------------------------------
 const firebaseConfig = {
-  apiKey: "AIzaSyCZg3sy5BodpJyS0db9o6v0gha Svx7UnuU",
+  apiKey: "AIzaSyCZg3sy5BodpJyS0db9o6v0ghaSvx7UnuU",
   authDomain: "plaza-libre-god.firebaseapp.com",
   projectId: "plaza-libre-god",
   storageBucket: "plaza-libre-god.firebasestorage.app",
@@ -34,7 +34,7 @@ const auth = initializeAuth(app, {
 
 const db = getFirestore(app);
 const storage = getStorage(app);
-const functions = getFunctions(app, 'us-central1');
+const functions = getFunctions(app, 'us-central1'); // ✅ CORRECTO
 
 // -----------------------------------------------------------------------------
 // 4. PREPARAMOS LOS ATAJOS PARA LLAMAR AL BACKEND
@@ -47,7 +47,9 @@ export const api = {
   publishParkingSpace: (data) => callFunction('publishParkingSpace')(data),
   reserveParkingSpace: (data) => callFunction('reserveParkingSpace')(data),
   completeParkingSpace: (data) => callFunction('completeParkingSpace')(data),
-  findAndAssignParkingSpace: (data) => callFunction('findAndAssignParkingSpace')(data), // La nueva función ya incluida.
+  findAndAssignParkingSpace: (data) => callFunction('findAndAssignParkingSpace')(data),
+  deleteParkingSpace  : (data) => callFunction('deleteParkingSpace')(data),
+  cancelParkingSpace  : (data) => callFunction('cancelParkingSpace')(data),
 };
 
 // -----------------------------------------------------------------------------

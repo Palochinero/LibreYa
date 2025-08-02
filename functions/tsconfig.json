@@ -1,15 +1,19 @@
 {
-    "compilerOptions": {
-      "module": "commonjs",
-      "noImplicitReturns": true,
-      "noUnusedLocals": true,
-      "outDir": "lib",
-      "sourceMap": true,
-      "strict": true,
-      "target": "es2017"
-    },
-    "compileOnSave": true,
-    "include": [
-      "src"
-    ]
-  }
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "lib",
+
+    "target": "es2020",
+    "module": "commonjs",
+    "lib": ["es2020"],
+
+    "strict": true,
+    "noImplicitReturns": true,
+    "noUnusedLocals": false,   // ← era true
+    "esModuleInterop": true,
+
+    "sourceMap": true
+  },
+  "include": ["src/**/*.ts"],
+  "compileOnSave": true
+}
